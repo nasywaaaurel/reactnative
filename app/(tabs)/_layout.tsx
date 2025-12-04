@@ -24,10 +24,39 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="mapwebview"
         options={{
           title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol
+            size={28}
+            name="map"
+            color={color}
+          />,
+        }}
+      />
+      <Tabs.Screen
+        name="gmap"
+        options={{
+          title: 'Gmap API',
+          tabBarIcon: ({ color }) => <IconSymbol
+            size={28}
+            name="alt-route"
+            color={color}
+          />,
+        }}
+      />
+      <Tabs.Screen
+        name="lokasi"
+        options={{
+          title: 'List',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="format-list-bulleted" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="mahasiswa"
+        options={{
+          title: 'Bookmark',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="bookmark-border" color={color} />,
         }}
       />
     </Tabs>

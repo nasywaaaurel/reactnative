@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Firebase + Leaflet Map + Heatmap + Bookmark</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css">
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        button {
+            cursor: pointer;
+            margin-top: 6px;
+            padding: 6px 10px;
+        }
+
+        .legend {
+            padding: 6px 8px;
+            font: 14px Arial;
+            background: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+            line-height: 24px;
+        }
+
+        .legend h4 {
+            margin: 0 0 5px;
+            color: #333;
+        }
+
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.9;
+        }
+
+        #searchBox {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 9999;
+            width: 180px;
+            padding: 6px 8px;
+            border: 1px solid #aaa;
+            border-radius: 4px;
+        }
+
+        #toggleHeat {
+            position: absolute;
+            top: 50px;
+            left: 10px;
+            z-index: 9999;
+            padding: 6px 10px;
+        }
+
+        .leaflet-top.leaflet-left {
+            top: 80px !important;
+        }
+
+        /* Toast Notification */
+        #toast {
+            visibility: hidden;
+            min-width: 180px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 10px;
+            position: fixed;
+            z-index: 10000;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            font-size: 14px;
+        }
+
+        #toast.show {
+            visibility: visible;
+            animation: fadein 0.5s, fadeout 0.5s 2s;
+        }
+
+        @keyframes fadein {
+            from {
+                bottom: 0;
+                opacity: 0;
+            }
+
+            to {
+                bottom: 30px;
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeout {
+            from {
+                bottom: 30px;
+                opacity: 1;
+            }
+
+            to {
+                bottom: 0;
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <input type="text" id="searchBox" placeholder="Cari nama/kategori...">
+    <button id="toggleHeat">Toggle Heatmap</button>
+    <div id="map"></div>
+    <div id="toast"></div>
+
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.min.js"></script>
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-database.js"></script>
+
+    <script>
+        // Firebase
+        const firebaseConfig = { apiKey: "AIzaSyAu6V-Dhm83Df7ku-oD55yRDEli6WpjQAM", authDomain: "reactnative-2025-f08a8.firebaseapp.com", databaseURL: "https://reactnative-2025-f08a8-default-rtdb.firebaseio.com", projectId: "reactnative-2025-f08a8", storageBucket: "reactnative-2025-f08a8.firebasestorage.app", messagingSenderId: "916430534243", appId: "1:916430534243:web:865b31053b1afdf723aa56" };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // Map
+        const map = L.map("map").setView([-6.982369791166694, 110.41391125305792], 13);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+
+        const wisataLayer = L.layerGroup().addTo(map);
+        const kulinerLayer = L.layerGroup().addTo(map);
+        const overlayMaps = {
+            "<i class='fa fa-university' style='color:blue'></i> Wisata": wisataLayer,
+            "<i class='fa fa-cutlery' style='color:purple'></i> Kuliner": kulinerLayer
+        };
+        L.control.layers(null, overlayMaps, { collapsed: false }).addTo(map);
+
+        // Heatmap
+        let heatPoints = [];
+        const heatLayer = L.heatLayer(heatPoints, { radius: 25, blur: 15, maxZoom: 17, gradient: { 0.2: 'blue', 0.4: 'green', 0.6: 'yellow', 0.8: 'orange', 1.0: 'red' } }).addTo(map);
+        let heatVisible = true;
+        document.getElementById("toggleHeat").addEventListener("click", () => {
+            heatVisible ? map.removeLayer(heatLayer) : map.addLayer(heatLayer);
+            heatVisible = !heatVisible;
+        });
+        map.on('zoomend', () => { const z = map.getZoom(); heatLayer.setOptions({ radius: z < 12 ? 70 : z < 14 ? 25 : 50 }); });
+
+        // Legend
+        const legend = L.control({ position: 'bottomleft' });
+        legend.onAdd = function (map) { const div = L.DomUtil.create('div', 'info legend'); div.innerHTML = '<h4>Legenda</h4><i style="background:#0000ff"></i> Wisata<br><i style="background:#800080"></i> Kuliner<br><i style="background:red"></i> Heatmap Popular Spot<br>'; return div; };
+        legend.addTo(map);
+
+        // Toast
+        function showToast(msg) { const t = document.getElementById('toast'); t.innerText = msg; t.className = 'show'; setTimeout(() => { t.className = t.className.replace('show', ''); }, 2500); }
+
+        // Firebase listener
+        const pointsRef = database.ref("/points");
+        pointsRef.on("value", snapshot => {
+            const data = snapshot.val();
+            wisataLayer.clearLayers(); kulinerLayer.clearLayers(); heatPoints = [];
+
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    const point = data[key]; if (!point.coordinates) return;
+                    const coords = point.coordinates.split(",").map(parseFloat);
+                    const type = (point.tipe || point.type || '').toLowerCase().trim();
+                    let markerColor, iconName, targetLayer;
+                    if (type === 'wisata') { markerColor = 'blue'; iconName = 'university'; targetLayer = wisataLayer; }
+                    else if (type === 'kuliner') { markerColor = 'purple'; iconName = 'cutlery'; targetLayer = kulinerLayer; }
+                    else { markerColor = 'gray'; iconName = 'question'; targetLayer = map; }
+
+                    const awesomeIcon = L.AwesomeMarkers.icon({ icon: iconName, prefix: 'fa', markerColor });
+                    const popup = `<b>${point.name ?? 'Tanpa Nama'}</b><br>
+                            Jam Buka: ${point.openHour ?? '-'}<br>
+                            Deskripsi: ${point.description ?? '-'}<br>
+                            Coordinates: ${coords.join(',')}<br>
+                            <button onclick="addBookmark('${key}')"><i class='fa fa-bookmark'></i> Bookmark</button>
+                            <button onclick="deletePoint('${key}')"><i class='fa fa-trash'></i> Hapus</button>`;
+                    L.marker(coords, { icon: awesomeIcon }).bindPopup(popup).addTo(targetLayer);
+
+                    let weight = point.popularity ? parseFloat(point.popularity) : 1;
+                    heatPoints.push([coords[0], coords[1], weight]);
+                });
+                heatLayer.setLatLngs(heatPoints); if (heatVisible) heatLayer.addTo(map);
+            }
+        });
+
+        // Bookmark
+        function addBookmark(key) {
+            pointsRef.child(key).once('value', snapshot => {
+                const point = snapshot.val();
+                if (point) {
+                    database.ref('/bookmarks').push().set(point);
+                    showToast(point.name + " ditambahkan ke Bookmark!");
+                }
+            });
+        }
+
+        // Delete
+        function deletePoint(key) { if (confirm("Yakin ingin menghapus data ini?")) pointsRef.child(key).remove(); }
+
+        // Search
+        document.getElementById("searchBox").addEventListener("input", function () {
+            const kw = this.value.toLowerCase(); let matched = null;
+            function process(layer) { const content = layer.getPopup().getContent().toLowerCase(); if (content.includes(kw)) { layer.setOpacity(1); matched = layer; } else layer.setOpacity(0.25); }
+            wisataLayer.eachLayer(process); kulinerLayer.eachLayer(process);
+            if (matched && kw.length > 0) { map.setView(matched.getLatLng(), 17, { animate: true }); matched.openPopup(); }
+        });
+    </script>
+</body>
+
+</html>
